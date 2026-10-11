@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Search, LocateFixed, ChevronLeft, ChevronRight, X, Phone, MapPin, MessageCircle } from 'lucide-react';
+import { Search, LocateFixed, ChevronLeft, ChevronRight, X, Phone, MapPin, MessageCircle, UserRound } from 'lucide-react';
 import './styles.css';
 import PwaControls from './PwaControls.jsx';
+import AccountPanel from './AccountPanel.jsx';
 
 const safePhone = value => String(value || '').replace(/[^\d+]/g, '');
 const initialQuery = { q: '', location: '', page: '1', page_size: '12' };
@@ -48,6 +49,7 @@ function AgentCard({ agent }) {
 }
 
 function App() {
+  const [accountOpen, setAccountOpen] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
     const connected = () => setOnline(true);
@@ -170,8 +172,9 @@ function App() {
     <main className="offline-state"><h2>You're offline</h2><p>Reconnect to search agents and see current reviews and verification information.</p><button onClick={() => window.location.reload()}>Try again</button></main>
   </>;
   return <>
-    <header><div className="header-inner"><div><h1>AgentTrust</h1><p>Property agents across Kenya</p></div><PwaControls /></div></header>
+    <header><div className="header-inner"><div><h1>AgentTrust</h1><p>Property agents across Kenya</p></div><div className="account-toolbar"><PwaControls /><button className="secondary" onClick={() => setAccountOpen(true)}><UserRound size={18} />Agent account</button></div></div></header>
     <main>
+      {accountOpen ? <AccountPanel onExit={() => { setAccountOpen(false); setQuery(current => ({ ...current })); }} /> : <>
       <form className="filters" onSubmit={find}>
         <label className="search-field">Agent or agency<input placeholder="Search by name" value={search} onChange={event => setSearch(event.target.value)} /></label>
         <label>County<select value={countyId} onChange={event => { setCountyId(event.target.value); setAreaId(''); }} disabled={!counties.length}>
@@ -205,6 +208,7 @@ function App() {
         <div className="grid">{ads?.map(ad => <article className="card" key={ad.id}><small>Sponsored</small><h3>{ad.headline}</h3><p>{ad.description || ''}</p><p className="muted">{ad.agent_name}</p></article>)}</div>
         {!loading && !failed && (ads === null ? <p>Advertisements are unavailable.</p> : !ads.length && <p>No sponsored listings for this area yet.</p>)}
       </section>
+      </>}
     </main>
   </>;
 }

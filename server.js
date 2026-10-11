@@ -7,6 +7,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { query } from './database.js';
 import * as directory from './directory.js';
 import { parseDiscoveryQuery } from './discovery-query.js';
+import { accounts } from './accounts.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -15,6 +16,7 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '20kb' }));
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
+app.use('/api', (req, res, next) => /^\/(auth|account|moderation)(\/|$)/.test(req.path) ? accounts(req, res, next) : next());
 
 app.get('/api/health', async (req, res) => {
   try {

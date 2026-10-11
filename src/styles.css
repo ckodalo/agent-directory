@@ -51,5 +51,18 @@ summary { cursor: pointer; color: #126d60; font-size: 14px; }
 .sponsored { border-top: 1px solid #dce6e3; padding-top: 24px; margin-top: 28px; }
 .sponsored small { display: block; color: #946316; margin-bottom: 10px; }
 .text-button { background: none; color: #126d60; border: 0; padding: 4px 8px; }
+.account-toolbar, .account-tabs, .account-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.account-toolbar h2 { margin: 0; }
+.account-tabs, .account-actions { margin: 18px 0; }
+.auth-form { display: grid; gap: 16px; max-width: 430px; margin-top: 24px; }
+.profile-form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; max-width: 850px; }
+.full-width { grid-column: 1 / -1; }
+textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid #bccdc8; border-radius: 6px; font: inherit; resize: vertical; }
+fieldset { border: 1px solid #bccdc8; border-radius: 6px; padding: 16px; min-width: 0; }
+.area-checklist { max-height: 260px; overflow-y: auto; margin-top: 14px; display: grid; gap: 10px; }
+.checkbox-label { flex-direction: row; align-items: center; font-weight: 400; }
+.checkbox-label input { width: 18px; min-height: 18px; flex: 0 0 18px; }
+.form-error { color: #a02c30; }
+@media (max-width: 600px) { .profile-form { grid-template-columns: 1fr; } }
 @media (max-width: 1000px) { .filters { grid-template-columns: 1fr 1fr; } .search-field { grid-column: 1 / -1; } }
 @media (max-width: 520px) { .filters { grid-template-columns: 1fr; } .nearby-controls { gap: 10px; } .results-heading { align-items: flex-start; flex-direction: column; gap: 0; } }

@@ -36,6 +36,8 @@ Illustrative weighted components: verified customer feedback 40%, complaint reso
 Users, Agents, Locations, AgentServiceAreas, Reviews, Complaints, Verifications, Advertisements, AdvertisementLocations, AdImpressions, AgentScores. Adapt names to actual existing schema and use migrations rather than destructive replacement.
 
 ## Suggested milestones
+
+Current implementation includes nationwide discovery and installable PWA support. Agent registration, database-backed sessions, owned profile editing and moderator publication approvals are implemented locally. Identity verification, public review submission, complaints, account recovery and reputation scoring remain planned. Publication approval is distinct from identity verification.
 1. Audit existing starter; make local setup reliable, including MySQL schema, env template, seed data and API/UI smoke tests.
 2. Agent registration/authentication, profile editing and multi-location service areas.
 3. Reviews, commendations, moderation, identity verification and explainable reputation scoring.

@@ -1,6 +1,6 @@
 # AgentTrust starter
 
-Public directory MVP: search agents by name/agency/location, optional browser geolocation, approved reviews summary, approved sponsored advertisements. No login, review submission, verification workflow, payment processing or admin interface yet. Do not publicly launch until those workflows, privacy controls and moderation are implemented.
+Local marketplace MVP: nationwide agent discovery, optional browser geolocation, approved review summaries, sponsored advertisements, agent accounts and profile publication approval. Public review submission, identity verification workflows, payment processing, account recovery and email verification are not implemented. Do not publicly launch until these workflows, privacy controls and abuse handling are ready.
 
 ## Run locally (no hosting required)
 
@@ -9,7 +9,7 @@ Prerequisites: Node.js 22.12+, a running local SQL Server, and Microsoft ODBC Dr
 1. Create a dedicated database: `sqlcmd -S localhost -E -C -b -Q "IF DB_ID('agenttrust') IS NULL CREATE DATABASE agenttrust"`.
 2. Import the SQL Server schema: `sqlcmd -S localhost -E -C -b -d agenttrust -i sql/schema.sqlserver.sql`. The script can be rerun without duplicating seed locations.
 3. Copy `.env.example` to `.env`. For the default local instance, use `DB_HOST=localhost`, `DB_NAME=agenttrust`, and `DB_AUTH=windows`. For a named instance, set `DB_INSTANCE` (for example, `SQLEXPRESS`) and omit `DB_PORT`. For SQL login authentication, use `DB_AUTH=sql` and supply `DB_USER` and `DB_PASSWORD`. Trusting a self-signed certificate is for local development only.
-4. Run `npm install`, `npm run db:migrate`, and `npm run dev` in the project directory.
+4. Run `npm install`, `npm run db:migrate`, `npm run auth:setup`, and `npm run dev` in the project directory. `auth:setup` generates a session secret in your ignored `.env` without printing it.
 5. Open `http://localhost:3000` and check `http://localhost:3000/api/health`.
 
 The directory starts empty. Add test agents, service areas and approved advertisements in SQL Server to populate it. The frontend uses **React** in `src/main.jsx`, with styles in `src/styles.css`. Vite provides development hot reload through the Express server; API routes remain in `server.js`. Database connections live in `database.js`, and directory queries live in `directory.js`. No cPanel setup is needed for local development.
@@ -38,6 +38,20 @@ Ads use the same selected location hierarchy. Nearby advertising matches known l
 
 Run `npm test` for query validation. After importing the SQL Server schema and running migrations, run `npm run test:db`. This integration check creates temporary agents, reviews, and ads in the configured database, verifies hierarchy matching, pagination, approved ratings, nearby results and geographic ads, and removes its records afterward. Use a local development database.
 
+## Agent accounts and profile approvals
+
+Migration `002-onboarding` adds users, persistent sessions, profile ownership, publication states and an audit log. Existing agent records and IDs are preserved; existing published profiles stay published and are not automatically assigned to a user.
+
+Choose Agent account to register or sign in. Passwords must contain 12–128 characters and are hashed with salted scrypt (N=32768, r=8, p=1). Cookies are HttpOnly, SameSite=Lax, with an eight-hour expiry; login and registration regenerate sessions. Write requests require a session-bound CSRF token, and registration/login attempts are rate-limited. Sessions are held in the selected database, not in browser storage. `NODE_ENV=production` or `SESSION_COOKIE_SECURE=true` requires HTTPS for session cookies. Keep `SESSION_SECRET` private and stable across restarts; changing it invalidates existing signed cookies.
+
+New profiles start as unpublished drafts. Agents can edit their name, agency, biography, public contacts, optional office coordinates and up to 50 service areas. A contact number and at least one service area are required before submission. Saving changes to an approved profile unpublishes it and requires resubmission. Concurrent edits and approvals use profile versions and database transactions. Changing the agent name resets identity verification to unverified.
+
+Register the intended moderator account, then run `npm run moderator:promote -- email@example.com` locally. This changes only that existing account's role; no moderator account or password is seeded. Its Agent account screen includes the approval queue. Moderators can approve pending profiles or reject them with feedback, but cannot moderate their own profiles. Publication approval never grants identity verification or changes review ratings. Actions are recorded in `profile_actions`.
+
+Run `npm run test:accounts` for registration, login, CSRF, session revocation, ownership, profile versioning, rejection/resubmission and approval integration tests. The test uses temporary accounts and profiles and removes them afterward. Use the local development database.
+
+Account recovery, email verification, credential-document submission, full dispute/appeal workflows and session administration remain future milestones. Expired sessions cannot authenticate; database sessions are cleaned when sessions are saved.
+
 ## Production build
 
 Run `npm run build`, then `npm start`. Express serves the compiled React frontend from `dist/` alongside the API. Keep your local `.env` configured for the database. Commit `package-lock.json` for reproducible dependency installation; generated `dist/` files are ignored.
@@ -51,7 +65,7 @@ Test installation and offline fallback with `npm run build` and `npm start`, aft
 Only static assets, icons, and the offline page are cached. Navigation and all `/api/` requests are network-only; API responses carry `Cache-Control: no-store`. Reviews, verification status, listings, advertisements, and precise search coordinates are not stored in service-worker caches. An Update available button activates a new worker and reloads the app. Run `npm run test:pwa` to validate the built manifest, PNG icons, and generated caching rules. Run `npm run icons:generate` to regenerate icons from the source artwork.
 
 ## Important limitations
-- MVP read-only public API; adding reviews and agents must be protected by authentication, anti-spam checks, authorization and moderation.
+- Public discovery APIs remain read-only. Agent profile writes require authentication, CSRF protection and ownership; publication requires moderator approval. Review submission is not available yet.
 - Browser location is permission-based and requires HTTPS (except localhost). Nearby search uses agent coordinates; manual location searches use service areas.
 - Ads are labeled Sponsored and cannot change agent reputation.
 - Do not treat a verified badge as proof of safety until a documented verification process exists.

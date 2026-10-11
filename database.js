@@ -46,20 +46,51 @@ async function connect() {
   return { pool, sql };
 }
 
-export async function query(statement, parameters = {}) {
+async function clientConnection() {
   if (!connection) connection = connect().catch(error => { connection = undefined; throw error; });
-  const client = await connection;
+  return connection;
+}
+
+async function runQuery(client, statement, parameters, sqlTransaction) {
   if (dialect === 'mysql') {
     const [rows] = await client.execute(statement, parameters);
     return rows;
   }
-  const request = client.pool.request();
+  const request = sqlTransaction ? new client.sql.Request(sqlTransaction) : client.pool.request();
   for (const [name, value] of Object.entries(parameters)) {
     const type = typeof value === 'number'
-      ? (Number.isInteger(value) ? client.sql.Int : client.sql.Float) : client.sql.NVarChar;
+      ? (Number.isInteger(value) && Math.abs(value) <= 2147483647 ? client.sql.Int : client.sql.Float) : client.sql.NVarChar;
     request.input(name, type, value);
   }
-  return (await request.query(statement)).recordset;
+  return (await request.query(statement)).recordset || [];
+}
+
+export async function query(statement, parameters = {}) {
+  return runQuery(await clientConnection(), statement, parameters);
+}
+
+export async function transaction(work) {
+  const client = await clientConnection();
+  if (dialect === 'mysql') {
+    const active = await client.getConnection();
+    try {
+      await active.beginTransaction();
+      const result = await work((statement, params = {}) => runQuery(active, statement, params));
+      await active.commit();
+      return result;
+    } catch (error) { await active.rollback(); throw error; }
+    finally { active.release(); }
+  }
+  const active = new client.sql.Transaction(client.pool);
+  await active.begin(client.sql.ISOLATION_LEVEL.SERIALIZABLE);
+  try {
+    const result = await work((statement, params = {}) => runQuery(client, statement, params, active));
+    await active.commit();
+    return result;
+  } catch (error) {
+    try { await active.rollback(); } catch { /* SQL Server may have already rolled back the transaction. */ }
+    throw error;
+  }
 }
 
 export async function close() {
