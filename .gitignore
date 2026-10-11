@@ -18,6 +18,8 @@ pnpm-debug.log*
 
 # Generated output and caches
 coverage/
+test-results/
+playwright-report/
 .nyc_output/
 dist/
 build/

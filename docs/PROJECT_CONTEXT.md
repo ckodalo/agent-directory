@@ -38,6 +38,8 @@ Users, Agents, Locations, AgentServiceAreas, Reviews, Complaints, Verifications,
 ## Suggested milestones
 
 Current implementation includes nationwide discovery and installable PWA support. Agent registration, database-backed sessions, owned profile editing and moderator publication approvals are implemented locally. Identity verification, public review submission, complaints, account recovery and reputation scoring remain planned. Publication approval is distinct from identity verification.
+
+Discovery includes a desktop location sidebar and mobile expandable filters, immediate hierarchical drill-down and explicit broad-versus-local agent coverage. Moderators can add sourced child locations with recorded provenance. A limited sourced Kisumu > Kisumu West > Maseno branch is seeded; comprehensive detailed nationwide location data and Rent/Buy/property-specialty filters are not yet implemented.
 1. Audit existing starter; make local setup reliable, including MySQL schema, env template, seed data and API/UI smoke tests.
 2. Agent registration/authentication, profile editing and multi-location service areas.
 3. Reviews, commendations, moderation, identity verification and explainable reputation scoring.

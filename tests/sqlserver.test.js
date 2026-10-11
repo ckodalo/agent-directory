@@ -93,6 +93,10 @@ test('SQL Server directory filtering, ratings, nearby search, and advertisements
       locationIds.push(parentId);
     }
     await query('INSERT INTO agent_service_areas(agent_id,location_id) VALUES (@id,@location)', { id: Number(id), location: parentId });
+    const unifiedPlaceSearch = await directory.searchAgents({ q: `${name} neighborhood` });
+    assert.deepEqual(unifiedPlaceSearch.items.map(agent => agent.id), [Number(id)], 'unified search matches service-area names');
+    const unifiedCountySearch = await directory.searchAgents({ q: 'Nairobi', locationId: nairobi.id, pageSize: 100 });
+    assert.ok(unifiedCountySearch.items.some(agent => agent.id === Number(id)), 'unified search matches service-area counties');
     for (const locationId of locationIds) {
       assert.equal((await directory.searchAgents({ ...base, locationId })).total, 2, 'nested areas match descendants and county-wide agents');
     }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Send, LogOut, RefreshCw, Check, X, LocateFixed } from 'lucide-react';
+import LocationManager from './LocationManager.jsx';
 
 export default function AccountPanel({ onExit }) {
   const [session, setSession] = useState(null);
@@ -13,6 +14,7 @@ export default function AccountPanel({ onExit }) {
   const [areaSearch, setAreaSearch] = useState('');
   const [queue, setQueue] = useState([]);
   const [moderating, setModerating] = useState(false);
+  const [managingLocations, setManagingLocations] = useState(false);
   const [reasons, setReasons] = useState({});
 
   async function request(path, method = 'GET', body) {
@@ -93,7 +95,7 @@ export default function AccountPanel({ onExit }) {
     <div className="account-toolbar"><h2 id="account-title">{session?.user ? 'Agent account' : registering ? 'Create agent account' : 'Sign in'}</h2>
       <button className="secondary" onClick={onExit}>Browse agents</button>
       {session?.user && <button className="secondary" disabled={busy} onClick={() => operation(async () => {
-        await request('/auth/logout', 'POST', {}); setSession(await request('/auth/session')); setProfile(null); setQueue([]); setModerating(false);
+        await request('/auth/logout', 'POST', {}); setSession(await request('/auth/session')); setProfile(null); setQueue([]); setModerating(false); setManagingLocations(false);
       })}><LogOut size={16} />Sign out</button>}
     </div>
     {error && <p role="alert" className="form-error">{error}</p>}
@@ -113,9 +115,10 @@ export default function AccountPanel({ onExit }) {
     </>}
     {session?.user && <>
       <p className="muted">{session.user.email}</p>
-      {session.user.role === 'moderator' && <div className="account-tabs"><button className="secondary" onClick={() => setModerating(false)}>My profile</button><button className="secondary" disabled={busy} onClick={loadQueue}>Approval queue</button></div>}
+      {session.user.role === 'moderator' && <div className="account-tabs"><button className="secondary" onClick={() => { setModerating(false); setManagingLocations(false); }}>My profile</button><button className="secondary" disabled={busy} onClick={() => { setManagingLocations(false); loadQueue(); }}>Approval queue</button><button className="secondary" disabled={busy} onClick={() => { setModerating(false); setManagingLocations(true); }}>Locations</button></div>}
+      {managingLocations && session.user.role === 'moderator' && <LocationManager places={places} request={request} operation={operation} busy={busy} onAdded={created => { setPlaces(current => [...current, created]); setNotice('Location added.'); }} />}
       {!moderating && !profile && !error && <p>Loading profile...</p>}
-      {!moderating && profile && <>
+      {!moderating && !managingLocations && profile && <>
         <p><span className="tag">{profile.profile_status}</span> Identity: {profile.verification_status}</p>
         {profile.rejection_reason && <p role="status">Moderator feedback: {profile.rejection_reason}</p>}
         {profile.profile_status === 'approved' && <p>Saving changes removes this profile from discovery until it is approved again.</p>}

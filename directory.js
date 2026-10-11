@@ -39,7 +39,9 @@ export async function searchAgents({ q = '', location = '', locationId = null, l
   const scope = locationScope(locationId, parameters);
   let where = 'a.is_published=1';
   if (q) {
-    where += ` AND (a.name LIKE ${p('q')} OR a.agency_name LIKE ${p('q')})`;
+    where += ` AND (a.name LIKE ${p('q')} OR a.agency_name LIKE ${p('q')}
+      OR EXISTS (SELECT 1 FROM agent_service_areas search_area JOIN locations search_location ON search_location.id=search_area.location_id
+        WHERE search_area.agent_id=a.id AND (search_location.name LIKE ${p('q')} OR search_location.county LIKE ${p('q')})))`;
     parameters.q = `%${q}%`;
   }
   if (locationId) where += ' AND EXISTS (SELECT 1 FROM agent_service_areas asa JOIN location_scope s ON s.id=asa.location_id WHERE asa.agent_id=a.id)';

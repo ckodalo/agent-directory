@@ -5,18 +5,21 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch --watch-path=server.js --watch-path=database.js --watch-path=directory.js --watch-path=discovery-query.js --watch-path=accounts.js --watch-path=account-repository.js --watch-path=account-validation.js --watch-path=session-store.js --watch-path=.env server.js --dev",
+    "dev": "node --watch --watch-path=server.js --watch-path=database.js --watch-path=directory.js --watch-path=discovery-query.js --watch-path=accounts.js --watch-path=account-repository.js --watch-path=account-validation.js --watch-path=location-management.js --watch-path=session-store.js --watch-path=.env server.js --dev",
     "build": "vite build",
     "test:db": "node --test tests/sqlserver.test.js",
+    "test:ui": "playwright test",
     "test": "node --test tests/discovery-query.test.js tests/account-validation.test.js",
     "test:accounts": "node --test tests/accounts.test.js",
     "test:pwa": "npm run build && node --test tests/pwa.test.js",
     "icons:generate": "node scripts/generate-icons.js",
     "db:migrate": "node scripts/migrate.js",
     "auth:setup": "node scripts/setup-auth.js",
-    "moderator:promote": "node scripts/promote-moderator.js"
+    "moderator:promote": "node scripts/promote-moderator.js",
+    "db:seed:agents": "node scripts/seed-agents.js"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
@@ -33,6 +36,7 @@
     "node": ">=22.12.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@vitejs/plugin-react": "^6.1.2",
     "sharp": "^0.35.5",
     "vite": "^8.3.4",

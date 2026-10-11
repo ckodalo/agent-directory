@@ -11,6 +11,7 @@ test('onboarding enforces sessions, CSRF, ownership, approval and session revoca
   const server = await new Promise(resolve => { const active = app.listen(0, '127.0.0.1', () => resolve(active)); });
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const users = [];
+  const locationIds = [];
   const name = `Integration onboarding ${randomUUID()}`;
   const password = 'Test-only-password-2026!';
   function client() {
@@ -47,6 +48,7 @@ test('onboarding enforces sessions, CSRF, ownership, approval and session revoca
     const original = (await agent.request('/account/profile')).data;
     assert.equal(original.profile_status, 'draft');
     assert.equal((await agent.request('/moderation/profiles')).status, 403);
+    assert.equal((await agent.request('/moderation/locations', 'POST', {})).status, 403);
     const [{ id: county }] = await query("SELECT id FROM locations WHERE county_code='47'");
     const edit = { ...original, phone: '+254710000000', service_area_ids: [Number(county)], verification_status: 'verified', is_published: 1 };
     const saved = await agent.request('/account/profile', 'PUT', edit);
@@ -69,6 +71,17 @@ test('onboarding enforces sessions, CSRF, ownership, approval and session revoca
     assert.equal((await agent.request(`/moderation/profiles/${original.id}`, 'POST', { action: 'approve', profile_version: submitted.data.profile_version })).status, 403);
     const mod = await register(moderator, 'moderator');
     await query(`UPDATE users SET role='moderator' WHERE id=${p('id')}`, { id: mod.id });
+    const locationInput = { name: `${name} location`, parent_id: Number(county), location_type: 'sub_county', source_url: 'https://example.test/location-evidence', confirmed: true };
+    assert.equal((await moderator.request('/moderation/locations', 'POST', { ...locationInput, confirmed: false })).status, 400);
+    assert.equal((await moderator.request('/moderation/locations', 'POST', { ...locationInput, source_url: 'javascript:alert(1)' })).status, 400);
+    assert.equal((await moderator.request('/moderation/locations', 'POST', locationInput, '')).status, 403);
+    const added = await moderator.request('/moderation/locations', 'POST', locationInput);
+    assert.equal(added.status, 201, JSON.stringify(added.data)); locationIds.push(added.data.id);
+    assert.equal(added.data.county, 'Nairobi');
+    assert.equal((await moderator.request('/moderation/locations', 'POST', locationInput)).status, 409);
+    assert.equal((await moderator.request('/moderation/locations', 'POST', { ...locationInput, parent_id: added.data.id })).status, 400);
+    const evidence = await query(`SELECT created_by,source_url FROM location_evidence WHERE location_id=${p('id')}`, { id: added.data.id });
+    assert.equal(evidence[0].created_by, mod.id);
     const queue = await moderator.request('/moderation/profiles');
     assert.equal(queue.status, 200); assert.ok(queue.data.some(item => item.id === original.id));
     const rejected = await moderator.request(`/moderation/profiles/${original.id}`, 'POST', { action: 'reject', profile_version: submitted.data.profile_version, reason: 'Integration feedback' });
@@ -99,6 +112,7 @@ test('onboarding enforces sessions, CSRF, ownership, approval and session revoca
     assert.ok(stored.password_hash.startsWith('scrypt:')); assert.ok(!stored.password_hash.includes(password));
   } finally {
     try {
+      for (const id of locationIds.reverse()) await query(`DELETE FROM locations WHERE id=${p('id')}`, { id });
       for (const id of users) {
         await query(`DELETE FROM agents WHERE owner_id=${p('id')}`, { id });
         await query(`DELETE FROM sessions WHERE session_json LIKE ${p('match')}`, { match: `%${id}%` });

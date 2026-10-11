@@ -6,6 +6,7 @@ import { query, parameter as p } from './database.js';
 import { DatabaseSessionStore } from './session-store.js';
 import { credentials, hashPassword, verifyPassword, profileInput } from './account-validation.js';
 import * as repository from './account-repository.js';
+import { createLocation } from './location-management.js';
 
 export const accounts = express.Router();
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) throw new Error('Run npm run auth:setup to configure SESSION_SECRET before starting the server');
@@ -71,6 +72,9 @@ accounts.post('/account/profile/submit', requireUser, safe(async (req, res) => {
   res.json(await repository.submitProfile(req.account.id, req.body.profile_version));
 }));
 accounts.get('/moderation/profiles', requireUser, requireModerator, safe(async (req, res) => res.json(await repository.pendingProfiles())));
+accounts.post('/moderation/locations', requireUser, requireModerator, rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }), safe(async (req, res) => {
+  res.status(201).json(await createLocation(req.account.id, req.body));
+}));
 accounts.post('/moderation/profiles/:id', requireUser, requireModerator, safe(async (req, res) => {
   const id = Number(req.params.id), { action, profile_version: version } = req.body;
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';

@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Search, LocateFixed, ChevronLeft, ChevronRight, X, Phone, MapPin, MessageCircle, UserRound } from 'lucide-react';
-import './styles.css';
+import { Search, ChevronLeft, ChevronRight, X, Phone, MapPin, MessageCircle, UserRound, House, BadgeCheck, Star, SlidersHorizontal } from 'lucide-react';
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
+import './marketplace.css';
 import PwaControls from './PwaControls.jsx';
 import AccountPanel from './AccountPanel.jsx';
+import LocationSidebar from './LocationSidebar.jsx';
 
 const safePhone = value => String(value || '').replace(/[^\d+]/g, '');
 const initialQuery = { q: '', location: '', page: '1', page_size: '12' };
@@ -27,24 +32,29 @@ function ApprovedReviews({ id }) {
   </li>)}</ul> : <p>No approved reviews yet.</p>;
 }
 
-function AgentCard({ agent }) {
+function AgentCard({ agent, selectedLocation, locations }) {
   const [showReviews, setShowReviews] = useState(false);
-  return <article className="card">
-    <div className="agent-heading"><h3>{agent.name}</h3><span className="tag">{agent.verification_status === 'verified' ? 'Identity verified' : 'Not verified'}</span></div>
-    <p className="muted">{agent.agency_name || 'Independent agent'}</p>
-    <p className="rating">{agent.review_count > 0 ? `${agent.average_rating} / 5 (${agent.review_count} reviews)` : 'No reviews yet'}</p>
-    <p>{agent.bio || 'No biography available'}</p>
+  const direct = selectedLocation && agent.service_areas.some(area => String(area.id) === String(selectedLocation));
+  const ancestors = new Set();
+  let parent = locations.find(place => String(place.id) === String(selectedLocation));
+  while (parent?.parent_id && !ancestors.has(String(parent.parent_id))) { ancestors.add(String(parent.parent_id)); parent = locations.find(place => String(place.id) === String(parent.parent_id)); }
+  const broad = !direct && agent.service_areas.some(area => ancestors.has(String(area.id)));
+  return <article className="card agent-card">
+    <div className="agent-identity"><div className="avatar" aria-hidden="true"><UserRound size={26} /></div><div className="identity-copy"><h3>{agent.name}</h3><p className="muted">{agent.agency_name || 'Independent agent'}</p></div></div>
+    <span className={`tag ${agent.verification_status === 'verified' ? 'verified' : ''}`}>{agent.verification_status === 'verified' && <BadgeCheck size={14} />}{agent.verification_status === 'verified' ? 'Identity verified' : 'Not verified'}</span>
+    <p className="rating"><Star size={14} aria-hidden="true" />{agent.review_count > 0 ? `${agent.average_rating} / 5 (${agent.review_count} reviews)` : 'No reviews yet'}</p>
     <p className="service-areas"><MapPin size={16} aria-hidden="true" /><span>{agent.service_areas.length
       ? agent.service_areas.map(area => area.location_type === 'county' ? `${area.name} County` : `${area.name}, ${area.county}`).join('; ')
       : 'Service areas not listed'}</span></p>
     {agent.distance_km != null && <p className="muted">Office {Number(agent.distance_km).toFixed(1)} km away</p>}
+    {selectedLocation && <p className="coverage-label">{direct ? 'Lists this area' : broad ? 'Serves a wider area' : 'Lists areas within this location'}</p>}
     <div className="contacts">
       {agent.phone && <a href={`tel:${safePhone(agent.phone)}`}><Phone size={16} aria-hidden="true" />Call</a>}
       {agent.whatsapp && <a rel="noopener noreferrer" target="_blank" href={`https://wa.me/${safePhone(agent.whatsapp).replace(/\+/g, '')}`}><MessageCircle size={16} aria-hidden="true" />WhatsApp</a>}
     </div>
-    {agent.review_count > 0 && <details onToggle={event => setShowReviews(event.currentTarget.open)}>
-      <summary>Read approved reviews</summary>{showReviews && <ApprovedReviews id={agent.id} />}
-    </details>}
+    <details onToggle={event => setShowReviews(event.currentTarget.open)}>
+      <summary>Profile details</summary><p>{agent.bio || 'No biography available'}</p>{showReviews && <ApprovedReviews id={agent.id} />}
+    </details>
   </article>;
 }
 
@@ -59,9 +69,7 @@ function App() {
     return () => { window.removeEventListener('online', connected); window.removeEventListener('offline', disconnected); };
   }, []);
   const [search, setSearch] = useState('');
-  const [location, setLocation] = useState('');
-  const [countyId, setCountyId] = useState('');
-  const [areaId, setAreaId] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [radius, setRadius] = useState('25');
   const [locations, setLocations] = useState([]);
   const [locationsError, setLocationsError] = useState(false);
@@ -119,34 +127,15 @@ function App() {
   }, [query, online]);
 
   useEffect(() => () => { locationRequest.current += 1; }, []);
-  const counties = locations.filter(item => item.location_type === 'county').sort((a, b) => a.name.localeCompare(b.name));
   const byId = new Map(locations.map(item => [String(item.id), item]));
-  function inCounty(item) {
-    const seen = new Set();
-    let current = item;
-    while (current && !seen.has(current.id)) {
-      if (String(current.id) === countyId) return true;
-      seen.add(current.id);
-      current = byId.get(String(current.parent_id));
-    }
-    return false;
-  }
-  const areas = countyId ? locations.filter(item => item.location_type !== 'county' && inCounty(item)) : [];
-  const areaLabel = item => {
-    const parts = [item.name];
-    const seen = new Set([item.id]);
-    let parent = byId.get(String(item.parent_id));
-    while (parent && parent.location_type !== 'county' && !seen.has(parent.id)) {
-      parts.push(parent.name); seen.add(parent.id); parent = byId.get(String(parent.parent_id));
-    }
-    return `${parts.join(', ')} (${item.location_type.replace('_', '-')})`;
-  };
 
   function find(event) {
     event?.preventDefault();
     locationRequest.current += 1;
     setLocating(false);
-    setQuery({ ...initialQuery, q: search.trim(), location: location.trim(), ...(areaId || countyId ? { location_id: areaId || countyId } : {}) });
+    setQuery({ ...initialQuery, q: search.trim(), ...(query.location_id ? { location_id: query.location_id }
+      : query.lat ? { lat: query.lat, lng: query.lng, radius } : {}) });
+    setFiltersOpen(false);
   }
   function nearby() {
     if (!navigator.geolocation) { setStatus('Location is unavailable. Choose a county or enter an area.'); return; }
@@ -155,7 +144,7 @@ function App() {
     setStatus('Finding your location...');
     navigator.geolocation.getCurrentPosition(position => {
       if (request !== locationRequest.current) return;
-      setLocating(false); setLocation(''); setCountyId(''); setAreaId('');
+      setLocating(false); setFiltersOpen(false);
       setQuery({ ...initialQuery, q: search.trim(), lat: String(position.coords.latitude), lng: String(position.coords.longitude), radius });
     }, () => {
       if (request !== locationRequest.current) return;
@@ -166,36 +155,40 @@ function App() {
     setRadius(value);
     if (query.lat) setQuery(current => ({ ...current, radius: value, page: '1' }));
   }
+  function clearLocation() {
+    locationRequest.current += 1;
+    setLocating(false);
+    setQuery(current => ({ ...initialQuery, q: current.q }));
+  }
+  function selectLocation(id) {
+    locationRequest.current += 1; setLocating(false);
+    setQuery(current => ({ ...initialQuery, q: current.q, location_id: id }));
+  }
 
   if (!online) return <>
     <header><div className="header-inner"><h1>AgentTrust</h1></div></header>
     <main className="offline-state"><h2>You're offline</h2><p>Reconnect to search agents and see current reviews and verification information.</p><button onClick={() => window.location.reload()}>Try again</button></main>
   </>;
   return <>
-    <header><div className="header-inner"><div><h1>AgentTrust</h1><p>Property agents across Kenya</p></div><div className="account-toolbar"><PwaControls /><button className="secondary" onClick={() => setAccountOpen(true)}><UserRound size={18} />Agent account</button></div></div></header>
+    <header><div className="header-inner"><button className="brand" onClick={() => setAccountOpen(false)} aria-label="AgentTrust directory"><House size={24} /><span>AgentTrust</span></button><span className="header-location"><MapPin size={14} />Kenya</span><div className="account-toolbar"><PwaControls /><button className="secondary" onClick={() => setAccountOpen(true)}><UserRound size={18} />Agent account</button></div></div></header>
     <main>
       {accountOpen ? <AccountPanel onExit={() => { setAccountOpen(false); setQuery(current => ({ ...current })); }} /> : <>
-      <form className="filters" onSubmit={find}>
-        <label className="search-field">Agent or agency<input placeholder="Search by name" value={search} onChange={event => setSearch(event.target.value)} /></label>
-        <label>County<select value={countyId} onChange={event => { setCountyId(event.target.value); setAreaId(''); }} disabled={!counties.length}>
-          <option value="">All counties</option>{counties.map(county => <option key={county.id} value={county.id}>{county.name}</option>)}
-        </select></label>
-        <label>Town or area<select value={areaId} onChange={event => setAreaId(event.target.value)} disabled={!areas.length}>
-          <option value="">All areas</option>{areas.map(area => <option key={area.id} value={area.id}>{areaLabel(area)}</option>)}
-        </select></label>
-        <label>Location name<input placeholder="Town or neighborhood" value={location} onChange={event => setLocation(event.target.value)} /></label>
-        <button type="submit"><Search size={18} aria-hidden="true" />Search</button>
+      <form className="discovery-search" role="search" onSubmit={find}>
+        <div className="unified-search"><Search size={20} aria-hidden="true" />
+          <input aria-label="Search agents, agencies or places" placeholder="Search agents, agencies or places" value={search} maxLength={80} onChange={event => setSearch(event.target.value)} />
+          {search && <button type="button" className="icon-button clear-search" title="Clear search" aria-label="Clear search" onClick={() => { setSearch(''); setQuery(current => ({ ...current, q: '', page: '1' })); }}><X size={16} /></button>}
+          <button type="submit" className="icon-button" title="Search" aria-label="Search"><ChevronRight size={20} /></button>
+        </div>
+        <button type="button" className="secondary filter-toggle" aria-expanded={filtersOpen} aria-controls="discovery-filters" onClick={() => setFiltersOpen(value => !value)}><SlidersHorizontal size={18} />Filters{(query.location_id || query.lat) && <span className="filter-dot" />}</button>
       </form>
-      {locationsError && <p role="status">County filters are unavailable. <button className="text-button" onClick={() => setLocationRetry(value => value + 1)}>Retry</button></p>}
-      <div className="nearby-controls">
-        <button type="button" className="secondary" onClick={nearby} disabled={locating}><LocateFixed size={18} aria-hidden="true" />{locating ? 'Locating...' : 'Use my location'}</button>
-        <label className="radius">Radius<select value={radius} onChange={event => changeRadius(event.target.value)}>{[5, 10, 25, 50, 100].map(km => <option value={km} key={km}>{km} km</option>)}</select></label>
-        {query.lat && <span className="nearby-active">Nearby offices<button type="button" className="icon-button" title="Clear nearby filter" aria-label="Clear nearby filter" onClick={() => find()}><X size={16} /></button></span>}
-      </div>
+      <div className={`directory-layout ${filtersOpen ? 'filters-open' : ''}`}>
+      <LocationSidebar locations={locations} selectedId={query.location_id} onSelect={selectLocation} onClear={clearLocation} nearby={nearby} locating={locating} radius={radius} onRadius={changeRadius} error={locationsError} onRetry={() => setLocationRetry(value => value + 1)} onClose={() => setFiltersOpen(false)} />
+      <div className="directory-results">
+      {(query.location_id || query.lat) && <div className="active-filters"><span>{query.lat ? `Nearby offices · ${query.radius} km` : byId.get(String(query.location_id))?.name || 'Selected area'}</span><button type="button" className="icon-button" title="Remove location filter" aria-label="Remove location filter" onClick={clearLocation}><X size={16} /></button></div>}
       <div className="results-heading"><h2>Property agents</h2><p role="status">{status}</p></div>
       {failed && <button className="secondary" onClick={() => setQuery(current => ({ ...current }))}>Try again</button>}
       <section aria-label="Property agents" aria-busy={loading}>
-        <div className="grid">{result.items.map(agent => <AgentCard key={agent.id} agent={agent} />)}</div>
+        <div className="grid">{result.items.map(agent => <AgentCard key={agent.id} agent={agent} selectedLocation={query.location_id} locations={locations} />)}</div>
         {!loading && !failed && !result.items.length && <div className="empty-state"><h3>No agents found</h3><p>Try a different county, area, or search name.</p></div>}
       </section>
       {result.total_pages > 1 && <nav className="pagination" aria-label="Results pages">
@@ -203,11 +196,12 @@ function App() {
         <span>Page {result.page} of {result.total_pages}</span>
         <button className="icon-button" title="Next page" aria-label="Next page" disabled={loading || result.page >= result.total_pages} onClick={() => setQuery(current => ({ ...current, page: String(result.page + 1) }))}><ChevronRight size={20} /></button>
       </nav>}
-      <section className="sponsored" aria-labelledby="ads-title" aria-busy={loading}>
+      {!!ads?.length && <section className="sponsored" aria-labelledby="ads-title" aria-busy={loading}>
         <h2 id="ads-title">Sponsored advertisements</h2>
         <div className="grid">{ads?.map(ad => <article className="card" key={ad.id}><small>Sponsored</small><h3>{ad.headline}</h3><p>{ad.description || ''}</p><p className="muted">{ad.agent_name}</p></article>)}</div>
         {!loading && !failed && (ads === null ? <p>Advertisements are unavailable.</p> : !ads.length && <p>No sponsored listings for this area yet.</p>)}
-      </section>
+      </section>}
+      </div></div>
       </>}
     </main>
   </>;

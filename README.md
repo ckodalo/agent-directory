@@ -34,6 +34,12 @@ Ads use the same selected location hierarchy. Nearby advertising matches known l
 
 `GET /api/agents?page=1&page_size=12` returns `{ items, total, page, page_size, total_pages }`. Items include `service_areas`. Legacy callers without pagination parameters still receive an array, limited to 100 records. Optional filters: `q`, `location` (text), `location_id` (county or area ID), `lat`, `lng`, `radius` (km). Coordinates must be supplied together; page sizes are limited to 100. `GET /api/locations` returns the location hierarchy. `GET /api/ads` accepts the same geographic filters. A structured location takes precedence over coordinates for ad targeting when both are supplied. Approved reviews of unpublished agents are not exposed.
 
+The homepage has one search bar: `q` matches an agent name, agency, service-area name or service-area county. Location and nearby-radius controls live in the sidebar (behind Filters on mobile), with removable active-location indicators. Search uses text matching, not natural-language parsing; existing explicit API location filters remain supported.
+
+Location discovery now has a persistent desktop sidebar and an expandable mobile filter view. Selecting a county or child area immediately narrows results; breadcrumbs and Back let visitors move up, and All Kenya clears the location. Agent cards distinguish directly listed service areas from wider ancestor coverage. Missing child data is shown explicitly, never invented.
+
+Run `npm run db:migrate` for additive migrations `003-location-evidence` and `004-kisumu-locations`. Moderators can use Agent account > Locations to add sub-counties, towns and neighborhoods under existing parents. Each moderator addition requires a source URL and confirmation of the name/parent relationship; the source and creating moderator are stored privately in `location_evidence`. The server validates hierarchy order, derives the county from the parent, rejects sibling duplicates and enforces moderator access, CSRF and rate limiting. Existing locations are unchanged; editing/deleting locations is not part of this milestone. The sourced seed adds only Kisumu > Kisumu West > Maseno, based on Plate 13 in the [Kisumu CIDP III 2023-2027](https://www.kisumu.go.ke/wp-content/uploads/KISUMU-CIDP-III-2023-2027.pdf); seed provenance is recorded in the migration rather than attributed to a moderator. No agents are reassigned to these new locations. Rent/Buy and property specialties remain planned.
+
 ## Database checks
 
 Run `npm test` for query validation. After importing the SQL Server schema and running migrations, run `npm run test:db`. This integration check creates temporary agents, reviews, and ads in the configured database, verifies hierarchy matching, pagination, approved ratings, nearby results and geographic ads, and removes its records afterward. Use a local development database.
@@ -52,7 +58,13 @@ Run `npm run test:accounts` for registration, login, CSRF, session revocation, o
 
 Account recovery, email verification, credential-document submission, full dispute/appeal workflows and session administration remain future milestones. Expired sessions cannot authenticate; database sessions are cleaned when sessions are saved.
 
+### Local approval fixtures
+
+After migrations, run `npm run db:seed:agents` to add five fictional profiles across Nairobi, Kisumu, Nakuru, Uasin Gishu and Mombasa. They start pending and unpublished, with test-data biographies, no contact details, no login accounts, no reviews and no identity verification. The script refuses production mode and non-local database hosts. It is repeatable and preserves existing fixture statuses rather than resetting approved profiles. These fixtures bypass the normal submission contact requirement only for local queue testing; real account submissions still require a contact number. Approve or reject them from the moderator account's Approval queue. Remove these test profiles before deploying or copying the database into a real service.
+
 ## Production build
+
+The directory uses locally bundled Inter, compact agent tiles, white/light-gray surfaces and teal actions. Biographies and approved reviews open under Profile details; sponsorship remains separate. Run `npm run test:ui` with the built server at `http://localhost:3001` (or set `UI_BASE_URL` to another running instance). The browser checks use installed Microsoft Edge, browser-only agent fixtures, four viewport widths and screenshots in ignored `test-results/`.
 
 Run `npm run build`, then `npm start`. Express serves the compiled React frontend from `dist/` alongside the API. Keep your local `.env` configured for the database. Commit `package-lock.json` for reproducible dependency installation; generated `dist/` files are ignored.
 
