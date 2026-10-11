@@ -1,20 +1,85 @@
 import 'dotenv/config';
 import express from 'express';
-import mysql from 'mysql2/promise';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-const app=express();
+import { fileURLToPath } from 'node:url';
+import { createServer as createHttpServer } from 'node:http';
+import { query } from './database.js';
+import * as directory from './directory.js';
+import { parseDiscoveryQuery } from './discovery-query.js';
+
+const app = express();
 app.disable('x-powered-by');
-if(process.env.TRUST_PROXY==='1') app.set('trust proxy',1);
-app.use(helmet({contentSecurityPolicy:false}));
-app.use(express.json({limit:'20kb'}));
-app.use('/api',rateLimit({windowMs:60_000,limit:100,standardHeaders:'draft-7',legacyHeaders:false}));
-const pool=mysql.createPool({host:process.env.DB_HOST||'localhost',port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME,connectionLimit:5});
-const asNumber=(v)=>v===''||v==null?null:Number(v);
-app.get('/api/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch(e){res.status(503).json({ok:false,database:'unavailable'});}});
-app.get('/api/locations',async(req,res)=>{try{const [rows]=await pool.query('SELECT id,name,county FROM locations ORDER BY county,name');res.json(rows);}catch(e){res.status(500).json({error:'Unable to load locations'});}});
-app.get('/api/agents',async(req,res)=>{try{const {q='',location='',lat='',lng='',radius='25'}=req.query;const latitude=asNumber(lat),longitude=asNumber(lng),km=Number(radius);if((latitude!==null&&(!Number.isFinite(latitude)||Math.abs(latitude)>90))||(longitude!==null&&(!Number.isFinite(longitude)||Math.abs(longitude)>180))||!Number.isFinite(km)||km<=0||km>500)return res.status(400).json({error:'Invalid coordinates or radius'});const params=[];let where='WHERE a.is_published=1';if(String(q).trim()){where+=' AND (a.name LIKE ? OR a.agency_name LIKE ?)';params.push(`%${String(q).slice(0,80)}%`,`%${String(q).slice(0,80)}%`);}if(location){where+=' AND EXISTS (SELECT 1 FROM agent_service_areas asa JOIN locations loc ON loc.id=asa.location_id WHERE asa.agent_id=a.id AND (loc.name LIKE ? OR loc.county LIKE ?))';params.push(`%${String(location).slice(0,80)}%`,`%${String(location).slice(0,80)}%`);}let distance='NULL';if(latitude!==null&&longitude!==null){distance='(6371 * ACOS(LEAST(1,GREATEST(-1,COS(RADIANS(?))*COS(RADIANS(a.latitude))*COS(RADIANS(a.longitude)-RADIANS(?))+SIN(RADIANS(?))*SIN(RADIANS(a.latitude))))))';params.unshift(latitude,longitude,latitude);}const sql=`SELECT a.id,a.name,a.agency_name,a.phone,a.whatsapp,a.bio,a.verification_status,a.latitude,a.longitude,ROUND(COALESCE(AVG(CASE WHEN r.moderation_status='approved' THEN r.rating END),0),1) AS average_rating,COUNT(CASE WHEN r.moderation_status='approved' THEN 1 END) AS review_count,${distance} AS distance_km FROM agents a LEFT JOIN reviews r ON r.agent_id=a.id ${where} GROUP BY a.id ${latitude!==null&&longitude!==null?'HAVING distance_km<=?':''} ORDER BY (a.verification_status='verified') DESC,average_rating DESC,review_count DESC LIMIT 100`;if(latitude!==null&&longitude!==null)params.push(km);const [rows]=await pool.query(sql,params);res.json(rows);}catch(e){console.error(e);res.status(500).json({error:'Unable to load agents'});}});
-app.get('/api/agents/:id/reviews',async(req,res)=>{try{const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid agent ID'});const [rows]=await pool.query("SELECT rating,comment,created_at FROM reviews WHERE agent_id=? AND moderation_status='approved' ORDER BY created_at DESC LIMIT 50",[id]);res.json(rows);}catch(e){res.status(500).json({error:'Unable to load reviews'});}});
-app.get('/api/ads',async(req,res)=>{try{const location=String(req.query.location||'').slice(0,80);const [rows]=await pool.query(`SELECT ad.id,ad.headline,ad.description,ad.image_url,ad.target_url,a.name AS agent_name FROM advertisements ad JOIN agents a ON a.id=ad.agent_id WHERE ad.status='approved' AND a.is_published=1 AND NOW() BETWEEN ad.starts_at AND ad.ends_at AND (?='' OR NOT EXISTS (SELECT 1 FROM advertisement_locations al WHERE al.advertisement_id=ad.id) OR EXISTS (SELECT 1 FROM advertisement_locations al JOIN locations l ON l.id=al.location_id WHERE al.advertisement_id=ad.id AND (l.name LIKE ? OR l.county LIKE ?))) ORDER BY ad.created_at DESC LIMIT 10`,[location,`%${location}%`,`%${location}%`]);res.json(rows);}catch(e){res.status(500).json({error:'Unable to load ads'});}});
-app.use(express.static('public'));
-app.listen(Number(process.env.PORT||3000),()=>console.log('Agent directory listening'));
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '20kb' }));
+app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+app.use('/api', rateLimit({ windowMs: 60_000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
+
+app.get('/api/health', async (req, res) => {
+  try {
+    await query('SELECT 1 AS ok');
+    res.json({ ok: true, database: 'connected' });
+  } catch {
+    res.status(503).json({ ok: false, database: 'unavailable' });
+  }
+});
+
+const endpoint = (message, handler) => async (req, res) => {
+  try { await handler(req, res); }
+  catch (error) {
+    console.error(message, error.message);
+    res.status(500).json({ error: message });
+  }
+};
+
+app.get('/api/locations', endpoint('Unable to load locations', async (req, res) => {
+  res.json(await directory.locations());
+}));
+
+function discoveryOptions(req, res) {
+  try { return parseDiscoveryQuery(req.query); }
+  catch (error) { res.status(400).json({ error: error.message }); return null; }
+}
+app.get('/api/agents', endpoint('Unable to load agents', async (req, res) => {
+  const options = discoveryOptions(req, res);
+  if (!options) return;
+  res.json(req.query.page !== undefined || req.query.page_size !== undefined
+    ? await directory.searchAgents(options) : await directory.agents(options));
+}));
+
+app.get('/api/agents/:id/reviews', endpoint('Unable to load reviews', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid agent ID' });
+  res.json(await directory.reviews(id));
+}));
+
+app.get('/api/ads', endpoint('Unable to load ads', async (req, res) => {
+  const options = discoveryOptions(req, res);
+  if (options) res.json(await directory.advertisements(options));
+}));
+
+const httpServer = createHttpServer(app);
+let vite;
+if (process.argv.includes('--dev')) {
+  const { createServer } = await import('vite');
+  vite = await createServer({
+    server: { middlewareMode: true, hmr: { server: httpServer } }, appType: 'spa'
+  });
+  app.use(vite.middlewares);
+} else {
+  app.use(express.static(fileURLToPath(new URL('./dist', import.meta.url)), {
+    setHeaders: (res, path) => {
+      if (path.endsWith('sw.js') || path.endsWith('index.html') || path.endsWith('manifest.webmanifest')) res.set('Cache-Control', 'no-cache');
+    }
+  }));
+}
+const port = Number(process.env.PORT || 3000);
+httpServer.on('error', async error => {
+  console.error(error.code === 'EADDRINUSE'
+    ? `Port ${port} is already in use. Stop the other server or set PORT in .env.`
+    : `Unable to start server: ${error.message}`);
+  await vite?.close();
+  process.exitCode = 1;
+});
+httpServer.listen(port, () => console.log(`Agent directory listening at http://localhost:${port}`));

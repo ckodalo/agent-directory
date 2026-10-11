@@ -1,1 +1,37 @@
-{"name":"agent-directory-starter","version":"0.1.0","private":true,"type":"module","scripts":{"start":"node server.js","dev":"node --watch server.js"},"dependencies":{"express":"^4.21.2","mysql2":"^3.12.0","dotenv":"^16.4.7","helmet":"^8.0.0","express-rate-limit":"^7.5.0"},"engines":{"node":">=18"}}
+{
+  "name": "agent-directory-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch --watch-path=server.js --watch-path=database.js --watch-path=directory.js --watch-path=discovery-query.js --watch-path=.env server.js --dev",
+    "build": "vite build",
+    "test:db": "node --test tests/sqlserver.test.js",
+    "test": "node --test tests/discovery-query.test.js",
+    "test:pwa": "npm run build && node --test tests/pwa.test.js",
+    "icons:generate": "node scripts/generate-icons.js",
+    "db:migrate": "node scripts/migrate.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "lucide-react": "^1.55.0",
+    "msnodesqlv8": "^5.5.1",
+    "mssql": "^12.7.4",
+    "mysql2": "^3.12.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
